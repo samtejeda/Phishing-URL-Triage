@@ -1,8 +1,12 @@
 # Phishing URL Triage — n8n Workflow
 
+**Live demo:** https://phishing-url-triage-production.up.railway.app
+
 ## Overview
 
 A self-hosted [n8n](https://n8n.io/) workflow that automates the triage of suspicious URLs by querying multiple threat intelligence APIs and aggregating results into a structured verdict.
+
+![Workflow canvas](docs/screenshots/workflow.png)
 
 ## Architecture
 
@@ -71,5 +75,15 @@ Trigger (Webhook / manual)
 
 ## Lessons Learned
 
-_TODO: notes on API quirks, rate limits, false-positive tuning, and anything surprising discovered during development._
-# Phishing-URL-Triage
+**VirusTotal v3 requires a two-step lookup.** You can't query a URL directly — you first POST to `/api/v3/urls` to submit it, which returns an analysis ID, then GET `/api/v3/analyses/{id}` to fetch the results. A direct GET returns a 404 if the URL has no cached report.
+
+**Google Safe Browsing returns an empty response for clean URLs.** An empty `{}` body is not an error — it means no threats were found. The `matches` array only appears when a threat is detected, so the absence of it is the clean signal.
+
+**URLScan.io reports take 30–60 seconds to generate.** The API returns a UUID immediately on submission, but the full report at `urlscan.io/result/{uuid}` won't load until the scan completes. A production implementation would poll the result endpoint until ready.
+
+**n8n credentials don't export with workflows.** When importing a workflow JSON into a new n8n instance, all credential references are stripped for security. Each API credential has to be re-created manually in the new instance.
+
+**n8n blocks environment variable access in nodes by default.** `$env.VARIABLE_NAME` expressions are disabled unless `N8N_BLOCK_ENV_ACCESS_IN_NODE=false` is set. The better approach for API keys is to use n8n's built-in credential store, which is what this project does.
+
+**Railway's Docker image field accepts Docker Hub image names directly.** `n8nio/n8n` works — the `docker.n8n.io/` registry prefix causes a validation error in Railway's UI.
+
