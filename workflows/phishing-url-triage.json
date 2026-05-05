@@ -1,0 +1,281 @@
+{
+  "name": "Phishing URL Triage",
+  "nodes": [
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "27801e46-fe86-4087-974c-9b3f6c798b27",
+              "name": "url",
+              "value": "={{ $json.body.url }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        128,
+        -128
+      ],
+      "id": "ce567142-50f8-4a44-8db7-af769c649bd5",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://www.virustotal.com/api/v3/urls",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "virusTotalApi",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "url",
+              "value": "={{ $json.url }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        256,
+        0
+      ],
+      "id": "17161183-4e0e-4d98-9331-7cfc9fbf1dda",
+      "name": "VirusTotal",
+      "credentials": {
+        "virusTotalApi": {
+          "id": "nkMsDKBvjs5wGB95",
+          "name": "VirusTotal account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://www.virustotal.com/api/v3/analyses/{{ $json.data.id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "virusTotalApi",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        384,
+        -128
+      ],
+      "id": "61b4bab2-3253-419f-b0cb-eaebf2ae0580",
+      "name": "VirusTotal Results",
+      "credentials": {
+        "virusTotalApi": {
+          "id": "nkMsDKBvjs5wGB95",
+          "name": "VirusTotal account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://urlscan.io/api/v1/scan/",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "urlScanIoApi",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "url",
+              "value": "={{ $('Edit Fields').item.json.url }}"
+            },
+            {
+              "name": "visibility",
+              "value": "unlisted"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        512,
+        0
+      ],
+      "id": "eef5f772-b28f-48fb-b336-807c4419bf43",
+      "name": "URLScan",
+      "credentials": {
+        "urlScanIoApi": {
+          "id": "SSWMDGqpqB77JB40",
+          "name": "urlscan.io account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://safebrowsing.googleapis.com/v4/threatMatches:find",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"client\": {\n    \"clientId\": \"phishing-triage\",\n    \"clientVersion\": \"1.0\"\n  },\n  \"threatInfo\": {\n    \"threatTypes\": [\"MALWARE\", \"SOCIAL_ENGINEERING\", \"UNWANTED_SOFTWARE\", \"POTENTIALLY_HARMFUL_APPLICATION\"],\n    \"platformTypes\": [\"ANY_PLATFORM\"],\n    \"threatEntryTypes\": [\"URL\"],\n    \"threatEntries\": [\n      {\"url\": \"{{ $('Edit Fields').item.json.url }}\"}\n    ]\n  }\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        640,
+        -128
+      ],
+      "id": "e1113107-5c73-4dfa-ba0c-b7f17bf66be3",
+      "name": "Google Safe Browsing",
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "xpoN4kMFdBTZ2qOE",
+          "name": "Query Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "triage",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "52aa68e2-4e2b-447d-98e0-1a533ffce3de",
+      "name": "Webhook",
+      "webhookId": "07a3ae92-b524-41e6-9a5a-c88a233fe120"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $('Code').item.json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        896,
+        -128
+      ],
+      "id": "349a5f23-671b-4a33-a5d2-63912d1a2b7d",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const url = $('Edit Fields').item.json.url;\n\nconst vtData = $('VirusTotal Results').item.json;\nconst vtStats = vtData.data?.attributes?.stats || {};\nconst vtMalicious = vtStats.malicious || 0;\nconst vtSuspicious = vtStats.suspicious || 0;\n\nconst urlscanData = $('URLScan').item.json;\nconst urlscanId = urlscanData.uuid;\n\nconst gsbData = $('Google Safe Browsing').item.json;\nconst gsbThreats = gsbData.matches || [];\n\nlet verdict = 'CLEAN';\nif (vtMalicious > 0 || gsbThreats.length > 0) verdict = 'MALICIOUS';\nelse if (vtSuspicious > 0) verdict = 'SUSPICIOUS';\n\nreturn [{\n  json: {\n    url,\n    verdict,\n    virustotal: {\n      malicious: vtMalicious,\n      suspicious: vtSuspicious,\n      clean: vtStats.undetected || 0\n    },\n    urlscan: {\n      reportUrl: `https://urlscan.io/result/${urlscanId}`\n    },\n    googleSafeBrowsing: {\n      threats: gsbThreats.length,\n      details: gsbThreats\n    },\n    scannedAt: new Date().toISOString()\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        768,
+        0
+      ],
+      "id": "f4b86c95-af5e-4b57-9b94-112a29636149",
+      "name": "Code"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "VirusTotal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "VirusTotal": {
+      "main": [
+        [
+          {
+            "node": "VirusTotal Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "VirusTotal Results": {
+      "main": [
+        [
+          {
+            "node": "URLScan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "URLScan": {
+      "main": [
+        [
+          {
+            "node": "Google Safe Browsing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Safe Browsing": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "abf35e3f-5510-48e6-8634-57429cdcf77d",
+  "meta": {
+    "instanceId": "08b3a1275bb85efe19548f351414c3331e68eeb907d9b9d712f6145a9bab26c4"
+  },
+  "id": "OrSep8CaIkQaD8Yk",
+  "tags": []
+}

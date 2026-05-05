@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Phishing URL Triage</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 60px 20px;
+    }
+
+    h1 {
+      font-size: 1.8rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+      letter-spacing: -0.5px;
+    }
+
+    .subtitle {
+      color: #64748b;
+      font-size: 0.95rem;
+      margin-bottom: 40px;
+    }
+
+    .form {
+      display: flex;
+      gap: 10px;
+      width: 100%;
+      max-width: 620px;
+      margin-bottom: 40px;
+    }
+
+    input {
+      flex: 1;
+      padding: 12px 16px;
+      border-radius: 8px;
+      border: 1px solid #1e293b;
+      background: #1a1f2e;
+      color: #e2e8f0;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input:focus { border-color: #3b82f6; }
+
+    button {
+      padding: 12px 24px;
+      border-radius: 8px;
+      border: none;
+      background: #3b82f6;
+      color: #fff;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+
+    button:hover { background: #2563eb; }
+    button:disabled { background: #1e3a5f; color: #64748b; cursor: not-allowed; }
+
+    .card {
+      width: 100%;
+      max-width: 620px;
+      background: #1a1f2e;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      padding: 28px;
+      display: none;
+    }
+
+    .verdict {
+      font-size: 1.4rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .verdict.CLEAN { color: #22c55e; }
+    .verdict.SUSPICIOUS { color: #f59e0b; }
+    .verdict.MALICIOUS { color: #ef4444; }
+
+    .scanned-url {
+      color: #64748b;
+      font-size: 0.85rem;
+      margin-bottom: 24px;
+      word-break: break-all;
+    }
+
+    .sources {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .source {
+      background: #0f1117;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 14px;
+    }
+
+    .source-name {
+      font-size: 0.75rem;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
+    }
+
+    .source-stat {
+      font-size: 1.1rem;
+      font-weight: 700;
+    }
+
+    .source-stat.danger { color: #ef4444; }
+    .source-stat.warn { color: #f59e0b; }
+    .source-stat.safe { color: #22c55e; }
+
+    .source-sub {
+      font-size: 0.8rem;
+      color: #64748b;
+      margin-top: 2px;
+    }
+
+    .urlscan-link {
+      display: inline-block;
+      margin-top: 4px;
+      font-size: 0.82rem;
+      color: #3b82f6;
+      text-decoration: none;
+    }
+
+    .urlscan-link:hover { text-decoration: underline; }
+
+    .timestamp {
+      font-size: 0.78rem;
+      color: #334155;
+      text-align: right;
+    }
+
+    .error-msg {
+      color: #ef4444;
+      font-size: 0.9rem;
+      margin-top: -28px;
+      margin-bottom: 20px;
+      display: none;
+    }
+
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid #ffffff40;
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: inline-block;
+      vertical-align: middle;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <h1>Phishing URL Triage</h1>
+  <p class="subtitle">Checks VirusTotal, URLScan.io, and Google Safe Browsing</p>
+
+  <div class="form">
+    <input id="urlInput" type="url" placeholder="https://suspicious-site.com" />
+    <button id="scanBtn" onclick="scan()">Scan</button>
+  </div>
+
+  <p class="error-msg" id="errorMsg"></p>
+
+  <div class="card" id="resultCard">
+    <div class="verdict" id="verdict"></div>
+    <div class="scanned-url" id="scannedUrl"></div>
+    <div class="sources">
+      <div class="source">
+        <div class="source-name">VirusTotal</div>
+        <div class="source-stat" id="vtStat"></div>
+        <div class="source-sub" id="vtSub"></div>
+      </div>
+      <div class="source">
+        <div class="source-name">URLScan.io</div>
+        <div class="source-stat safe">Submitted</div>
+        <a class="urlscan-link" id="urlscanLink" href="#" target="_blank">View report →</a>
+      </div>
+      <div class="source">
+        <div class="source-name">Safe Browsing</div>
+        <div class="source-stat" id="gsbStat"></div>
+        <div class="source-sub" id="gsbSub"></div>
+      </div>
+    </div>
+    <div class="timestamp" id="timestamp"></div>
+  </div>
+
+  <script>
+    const WEBHOOK = 'https://n8n-production-fe01.up.railway.app/webhook/triage';
+
+    async function scan() {
+      const input = document.getElementById('urlInput');
+      const btn = document.getElementById('scanBtn');
+      const card = document.getElementById('resultCard');
+      const errorMsg = document.getElementById('errorMsg');
+      const url = input.value.trim();
+
+      if (!url) return;
+
+      errorMsg.style.display = 'none';
+      card.style.display = 'none';
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>';
+
+      try {
+        const res = await fetch(WEBHOOK, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url })
+        });
+
+        if (!res.ok) throw new Error(`Server responded with ${res.status}`);
+        const data = await res.json();
+
+        document.getElementById('verdict').textContent = data.verdict;
+        document.getElementById('verdict').className = `verdict ${data.verdict}`;
+        document.getElementById('scannedUrl').textContent = data.url;
+
+        const vtStat = document.getElementById('vtStat');
+        vtStat.textContent = data.virustotal.malicious > 0
+          ? `${data.virustotal.malicious} malicious`
+          : data.virustotal.suspicious > 0
+            ? `${data.virustotal.suspicious} suspicious`
+            : 'Clean';
+        vtStat.className = `source-stat ${data.virustotal.malicious > 0 ? 'danger' : data.virustotal.suspicious > 0 ? 'warn' : 'safe'}`;
+        document.getElementById('vtSub').textContent = `${data.virustotal.clean} engines clean`;
+
+        document.getElementById('urlscanLink').href = data.urlscan.reportUrl;
+
+        const gsbStat = document.getElementById('gsbStat');
+        gsbStat.textContent = data.googleSafeBrowsing.threats > 0 ? 'Threat detected' : 'Clean';
+        gsbStat.className = `source-stat ${data.googleSafeBrowsing.threats > 0 ? 'danger' : 'safe'}`;
+        document.getElementById('gsbSub').textContent = data.googleSafeBrowsing.threats > 0
+          ? data.googleSafeBrowsing.details.map(t => t.threatType).join(', ')
+          : 'No threats found';
+
+        document.getElementById('timestamp').textContent = `Scanned at ${new Date(data.scannedAt).toLocaleString()}`;
+        card.style.display = 'block';
+
+      } catch (err) {
+        errorMsg.textContent = `Error: ${err.message}`;
+        errorMsg.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Scan';
+      }
+    }
+
+    document.getElementById('urlInput').addEventListener('keydown', e => {
+      if (e.key === 'Enter') scan();
+    });
+  </script>
+</body>
+</html>
